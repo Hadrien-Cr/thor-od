@@ -1,0 +1,41 @@
+PROCTHOR_DS = None
+
+SCENE_TYPES = ["kitchen", "living_room", "bathroom", "bedroom", "procthor-train", "procthor-test"]
+
+
+def get_scene_type(scene_name: str) -> str:
+    if scene_name.startswith("FloorPlan"):
+        i = int(int(scene_name.replace("FloorPlan",""))//100)
+        try:
+            return SCENE_TYPES[[0,None,1,2,3][i]]
+        except:
+            raise ValueError(f"Unknown scene name: {scene_name}")
+        
+    elif scene_name.startswith("HousePlan"):
+        return "procthor"
+    
+    else:
+        raise ValueError(f"Unknown scene name: {scene_name}")
+
+
+def scene_name_to_scene_spec(scene_name: str) -> dict:
+    global PROCTHOR_DS
+
+    assert scene_name.startswith(
+        "HousePlan"
+    ), "Only ProcTHOR scenes need to be converted."
+
+    if PROCTHOR_DS is None:
+        import prior
+
+        PROCTHOR_DS = prior.load_dataset(
+            "procthor-10k", revision="439193522244720b86d8c81cde2e51e3a4d150cf"
+        )
+
+    if get_scene_type(scene_name) == "procthor-train":
+        i = int(int(scene_name.replace("HousePlan",""))//100)
+        return PROCTHOR_DS["train"][i]
+
+    if get_scene_type(scene_name) == "procthor-train":
+        i = int(int(scene_name.replace("HousePlan",""))//100)
+        return PROCTHOR_DS["test"][i]
