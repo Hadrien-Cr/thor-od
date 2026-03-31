@@ -3,14 +3,14 @@
 Utils to create benchmark datasets for object detection in AI2THOR
 
 # Roadmap
-
-[ ] HSSD dataset integration
-[ ] thor-od: Generate object detection dataset
+- [ ] thor-od: Automatically generate an object detection dataset from ProcTHOR scenes
     - [x] Base Implementation
     - [ ] Implementation with co-visibility clustering
 
-[ ] thor-c-od: Continual learning object detection dataset
+- [ ] thor-c-od: Continual learning object detection dataset from ProcTHOR scenes
 
-[ ] thor-act-od: Generate Active Vision dataset
+- [ ] thor-act-od: Generate Active Vision dataset from ProcTHOR scenes
     - [ ] Base Implementation
     - [ ] Implement confusing examples
+
+- [ ]  HSSD dataset integration
