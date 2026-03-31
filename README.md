@@ -3,9 +3,9 @@
 Utils to create benchmark datasets for object detection in AI2THOR
 
 # Roadmap
-- [ ] thor-od: Automatically generate an object detection dataset from ProcTHOR scenes
+- [x] thor-od: Automatically generate an object detection dataset from ProcTHOR scenes
     - [x] Base Implementation
-    - [ ] Implementation with co-visibility clustering
+    - [x] Implementation with co-visibility clustering
 
 - [ ] thor-c-od: Continual learning object detection dataset from ProcTHOR scenes
 
