@@ -40,27 +40,27 @@ def collect_episodes_all_scenes(config) -> list:
             viewpoints = []
 
             for agent_state in candidate_agent_states:
-                obs, instances = habitat_env.get_obs_gt(agent_state)
+                obs, labels = habitat_env.get_obs_gt(agent_state)
 
-                if not [inst for inst in instances if 
+                if not [inst for inst in labels.instances if 
                         (inst["object_id"] == object_id and inst["mask_area"] >= config.HABITAT_ACTIVE_OD.min_pixel_area)]:
                     continue
                 
                 viewpoints.append(agent_state)
 
-            if not viewpoints: 
+            if not len(viewpoints) > 3: 
                 continue
             
-            viewpoint = viewpoints[0]
             goals = [
-                NavigationGoal(position=viewpoint.position, radius=0)
+                NavigationGoal(position=viewpoints[-1].position, radius=0)
             ]
             episode = NavigationEpisode(
                 goals=goals,
                 episode_id=f"{scene_idx}_obj_id_{object_id}",
+                scene_dataset_config=config.habitat.simulator.scene_dataset,
                 scene_id=scene,
-                start_position=viewpoint.position,
-                start_rotation=viewpoint.rotation,
+                start_position=viewpoints[0].position,
+                start_rotation=viewpoints[0].rotation,
             )
             episode.info = {}
             episode.info["viewpoints"] = [
@@ -77,7 +77,6 @@ def collect_episodes_all_scenes(config) -> list:
 if __name__ == "__main__":
     config = habitat.get_config(config_path="config/habitat_active_od_config.yaml")
     episodes = collect_episodes_all_scenes(config)
-
     dset = habitat.datasets.make_dataset("PointNav-v1")
     dset.episodes = episodes
     out_file = config.HABITAT_ACTIVE_OD.viewpoint_dataset.dataset.data_path
@@ -86,7 +85,5 @@ if __name__ == "__main__":
 
     os.makedirs(os.path.dirname(out_file), exist_ok=True)
     
-    print(out_file)
-
     with gzip.open(out_file, "wt") as f:
         f.write(dset.to_json())

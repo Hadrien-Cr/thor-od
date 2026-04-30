@@ -55,9 +55,9 @@ if __name__ == "__main__":
                 continue
             
             for agent_state in tqdm(candidate_agent_states, desc=class_name):
-                obs_rgb,instances = habitat_env.get_obs_gt(agent_state)
+                obs, labels = habitat_env.get_obs_gt(agent_state)
 
-                if not [inst for inst in instances 
+                if not [inst for inst in labels.instances 
                     if inst["class_name"] == class_name and inst["mask_area"] >= config.HABITAT_OD.min_pixel_area]:
                     continue
                 
@@ -69,11 +69,11 @@ if __name__ == "__main__":
                 )
 
                 save_img(
-                    obs_rgb, 
+                    obs.rgb, 
                     Path(config.HABITAT_OD.data_root) / config.HABITAT_OD.dataset_name /"test", 
                     fname=fname
                 )
-                candidates_samples.append((fname, instances))
+                candidates_samples.append((fname, labels.instances))
 
     rng_gen.shuffle(candidates_samples)
     splits = {

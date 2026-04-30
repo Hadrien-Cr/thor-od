@@ -10,7 +10,15 @@ habitat:
     data_path: data/datasets/objectnav/hssd-hab/{split}/{split}.json.gz
     scenes_dir: data/scene_datasets/hssd-hab/scenes
     content_scenes: ["*"]
-
+  task:
+    measurements:
+      top_down_map:
+        type: TopDownMap
+        map_resolution: 1024
+        draw_source: true
+        draw_border: true
+        draw_shortest_path: true
+        draw_view_points: true
 
 HABITAT_OD:
   data_root: data_od/

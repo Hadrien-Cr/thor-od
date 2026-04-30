@@ -198,7 +198,7 @@ def covisibility_subset(samples: list[tuple[AgentState, dict, list[dict]]], rng_
 
 
 def area_bin_sampling(
-    list_of_samples,
+    list_of_samples: list[tuple[str, list[dict]]],
     rng_gen,
     mask_filtering_fn,
     num_samples=20,
