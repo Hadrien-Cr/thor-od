@@ -22,36 +22,32 @@ def collect_episodes_all_scenes(config) -> list:
     habitat_env = HSSD_OpenVoc_Env(config=config)
     scene_names = habitat_env.get_scenes_names()
 
-    for scene_idx, scene in enumerate(scene_names[0:config.HABITAT_ACTIVE_OD.num_scenes]):
+    for scene_idx, scene in enumerate(scene_names[0:config.DATA_GEN.num_scenes]):
         habitat_env.change_scene(scene)
 
         print("-----------------")
         print("Collection in Scene = ", scene, f"({scene_idx}/{len(scene_names)})")
 
-        habitat_obj_occupancy_grid = habitat_env.get_oracle_object_occupancy_grid(config.HABITAT_ACTIVE_OD.meters_per_grid_pixel)
-        object2class = habitat_env.get_scene_annotations()
+        habitat_obj_occupancy_grid = habitat_env.get_oracle_object_occupancy_grid(config.DATA_GEN.meters_per_grid_pixel)
+        object_annotations = habitat_env.get_object_annotations()
 
-        for object_id, class_name in tqdm(object2class.items()):
+        for object_id, class_name in tqdm(object_annotations.items()):
             if class_name == "unknown":
                 continue
-
-            candidate_agent_states = habitat_obj_occupancy_grid.get_all_viewpoints(object_id)
-
+            
+            candidate_agent_states = habitat_obj_occupancy_grid.get_all_viewpoints(object_id, viewpoint_spacing=config.DATA_GEN.viewpoint_spacing)
             viewpoints = []
 
             for agent_state in candidate_agent_states:
                 obs, labels = habitat_env.get_obs_gt(agent_state)
-
-                if not [inst for inst in labels.instances if 
-                        (inst["object_id"] == object_id and inst["mask_area"] >= config.HABITAT_ACTIVE_OD.min_pixel_area)]:
+                if not sum([inst["mask_area"] for inst in labels.instances if (inst["object_id"] == object_id)]) >= config.DATA_GEN.min_pixel_area:
                     continue
-                
                 viewpoints.append(agent_state)
 
             if not len(viewpoints) > 3: 
                 continue
             
-            goals = [
+            goals = 
                 NavigationGoal(position=viewpoints[-1].position, radius=0)
             ]
             episode = NavigationEpisode(
@@ -74,13 +70,14 @@ def collect_episodes_all_scenes(config) -> list:
 
     return episodes
 
+
 if __name__ == "__main__":
-    config = habitat.get_config(config_path="config/habitat_active_od_config.yaml")
+    config = habitat.get_config(config_path="habitat_active_od/config/data_gen_config.yaml")
     episodes = collect_episodes_all_scenes(config)
     dset = habitat.datasets.make_dataset("PointNav-v1")
     dset.episodes = episodes
-    out_file = config.HABITAT_ACTIVE_OD.viewpoint_dataset.dataset.data_path
-    split = config.HABITAT_ACTIVE_OD.viewpoint_dataset.dataset.split
+    out_file = config.DATA_GEN.dataset.data_path
+    split = config.DATA_GEN.dataset.split
     out_file = out_file.replace('{split}', 'val')
 
     os.makedirs(os.path.dirname(out_file), exist_ok=True)

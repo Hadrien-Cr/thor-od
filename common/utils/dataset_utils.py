@@ -11,7 +11,7 @@ def save_dataset(
     class_mapping: dict[str, int],
     class_frequency_mapping: dict[str, str]
 ):
-    ds_path = Path(config_ds.data_root) / config_ds.dataset_name
+    ds_path = Path(config_ds.dataset.data_root) / config_ds.dataset.dataset_name
 
     content = dict(
         path=str(ds_path),
@@ -70,7 +70,7 @@ def save_dataset(
             "categories":categories
         }
         with open(
-            ds_path / f"{config_ds.dataset_name}_{split_name}.json",
+            ds_path / f"{config_ds.dataset.dataset_name}_{split_name}.json",
             "w"
         ) as f:
             json.dump(lvis_json,f)

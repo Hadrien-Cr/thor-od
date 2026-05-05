@@ -304,15 +304,13 @@ class Categorical2DSemanticMapModule(nn.Module):
             seq_origins[:, t] = origins
             seq_map_features[:, t] = self._get_map_features(local_map, global_map)
         
-        print("take", time.time() - a)
-
         return (
             seq_map_features,
             local_map,
             global_map,
             seq_local_pose,
             seq_global_pose,
-            seq_lmb,
+            seq_lmb, # type: ignore
             seq_origins,
         )
 
@@ -470,23 +468,20 @@ class Categorical2DSemanticMapModule(nn.Module):
         """
         batch_size, obs_channels, h, w = obs.size()
         device, dtype = obs.device, obs.dtype
-        
-        if camera_pose is not None:
-            angles = torch.Tensor(
-                [tra.euler_from_matrix(p[:3, :3].cpu(), "rzyx") for p in camera_pose]
-            )
 
-            yaw = angles[:, 1]
+        current_pose = pu.get_new_pose_batch(prev_pose.clone(), pose_delta)
+
+        if camera_pose is not None:
             tilt = torch.zeros(batch_size)
             camera_height = self.camera_height
 
-            if debug:
-                print("tilt", tilt)
-                print("yaw", yaw)
-                print("camera_height", camera_height)
-                print()
+            # print("current_pose", current_pose)
+            # print("yaw", current_pose[:, 2])
+            # print("tilt", tilt)
+            # print("camera_height", camera_height)
+            # print()
+            
         else:
-            yaw = torch.tensor(batch_size)
             tilt = torch.zeros(batch_size)
             camera_height = self.camera_height
 
@@ -534,7 +529,6 @@ class Categorical2DSemanticMapModule(nn.Module):
 
         semantic_channels = obs[:, 4 : 4 + self.num_sem_categories, :, :]
 
-        current_pose = pu.get_new_pose_batch(prev_pose.clone(), pose_delta)
 
         if self.record_instance_ids:
             instance_channels = obs[
@@ -552,7 +546,7 @@ class Categorical2DSemanticMapModule(nn.Module):
                     semantic_channels,
                     instance_channels,
                     point_cloud_t,
-                    torch.concat([current_pose + origins, lmb], axis=1)
+                    torch.concat([current_pose + origins, lmb], axis=1) # type: ignore
                     .cpu()
                     .float(),  # store the global pose
                     image=obs[:, :3, :, :],
@@ -661,7 +655,7 @@ class Categorical2DSemanticMapModule(nn.Module):
         )
         st_pose[:, 2] = 90.0 - (st_pose[:, 2])
 
-        rot_mat, trans_mat = ru.get_grid(st_pose, agent_view.size(), dtype)
+        rot_mat, trans_mat = ru.get_grid(st_pose, agent_view.size(), dtype)  # type: ignore
         rotated = F.grid_sample(agent_view, rot_mat, align_corners=True)
         translated = F.grid_sample(rotated, trans_mat, align_corners=True)
 
@@ -967,7 +961,7 @@ class Categorical2DSemanticMapModule(nn.Module):
                 instance_mapping[local_instance_id.item()] = global_instance_id
                 max_instance_id += 1
             # update the id in instance memory
-            self.instance_memory.update_instance_id(
+            self.instance_memory.update_instance_id( # type: ignore
                 env_id, int(local_instance_id.item()), global_instance_id
             )
         instance_mapping[0.0] = 0
@@ -1016,8 +1010,8 @@ class Categorical2DSemanticMapModule(nn.Module):
                     local_map[e, MapConstants.NON_SEM_CHANNELS + i + self.num_sem_categories],
                     (lmb[e, 0], lmb[e, 1]),
                     (lmb[e, 2], lmb[e, 3]),
-                    max_instance_id,
-                )
+                    max_instance_id,  # type: ignore
+                ) 
                 global_map[
                     e, i + MapConstants.NON_SEM_CHANNELS + self.num_sem_categories
                 ] = instances

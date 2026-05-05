@@ -3,6 +3,11 @@ from habitat_sim.utils.common import quat_from_angle_axis
 import quaternion
 import torch
 import trimesh.transformations as tra
+import math
+
+def get_yaw(w, x, y, z):
+    return ((2 * math.atan2(y, w) + 2 * math.pi ) % (2 * math.pi))
+
 
 def quaternion_from_rpy(roll, pitch, yaw):
     """Inputs in radians"""

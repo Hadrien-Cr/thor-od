@@ -17,7 +17,8 @@ class DiscreteNavigationAction(Enum):
 @dataclass
 class Observations:
     # Pose
-    agent_state: AgentState
+    gps: np.ndarray  # (x, y) where positive x is forward, positive y is translation to left in meters
+    compass: np.ndarray  # positive theta is rotation to left in radians - consistent with robot
 
     # Camera
     rgb: np.ndarray  # (camera_height, camera_width, 3) in [0, 255]
@@ -30,3 +31,8 @@ class Observations:
 @dataclass
 class Labels:
     instances: list[dict]
+
+@dataclass
+class Pose:
+    position: np.ndarray
+    orientation: np.ndarray

@@ -9,7 +9,7 @@ from tqdm import tqdm
 import habitat # type: ignore
 from habitat_sim.agent.agent import AgentState
 from habitat.datasets.pointnav.pointnav_dataset import PointNavDatasetV1, NavigationEpisode, NavigationGoal # type: ignore
-from detectron2.utils.visualizer import Visualizer
+from detectron2.utils.visualizer import Visualizer as DetVisualizer
 from detectron2.data import build_detection_test_loader, MetadataCatalog, DatasetCatalog
 from detectron2.utils.visualizer import ColorMode
 
@@ -19,10 +19,10 @@ from common.utils.data_utils import save_img
 from common.vision.detic import build_detic_predictor
 
 import habitat_od.od_dataset_registry
-from habitat_active_od.agent import ActiveODAgent
+from agent import ActiveODAgent, DiscreteNavigationAction
 
-def overlap(mask1: np.ndarray,mask2:np.ndarray):
-    return np.logical_and(mask1, mask2).any()
+metadata = MetadataCatalog.get("hssd_od_openvoc_test")
+
 
 if __name__ == "__main__":
     config = habitat.get_config(config_path="config/habitat_active_od_config.yaml")
@@ -32,13 +32,27 @@ if __name__ == "__main__":
 
     habitat_env = HSSD_OpenVoc_Env(config=config)
     habitat_env.reset()
+    obs, labels = habitat_env.get_obs_gt(habitat_env.get_agent_state(), 0)
 
-    raise ValueError
-    # agent = ActiveODAgent(config=config)
-    # viewpoint_dataset = PointNavDatasetV1(config.HABITAT_ACTIVE_OD.viewpoint_dataset.dataset)
+    agent = ActiveODAgent(config=config)
+    agent.reset()
 
-    # scene_names = habitat_env.get_scenes_names()
-    # metadata = MetadataCatalog.get("hssd_od_openvoc_test")
+    metadata = MetadataCatalog.get("hssd_od_openvoc_test")
+
+    ACTIONS = {
+        DiscreteNavigationAction.MOVE_FORWARD: "move_forward",
+        DiscreteNavigationAction.TURN_LEFT: "turn_left",
+        DiscreteNavigationAction.TURN_RIGHT: "turn_right",
+        DiscreteNavigationAction.STOP: "stop",
+    }
+
+    for t in range(100):
+        agent_state = habitat_env.get_agent_state()
+        rot_x, rot_y, rot_z, rot_w = agent_state.rotation.x, agent_state.rotation.y, agent_state.rotation.z, agent_state.rotation.w
+
+        action = agent.act(obs)
+        habitat_env.step(ACTIONS[action])
+        obs, labels = habitat_env.get_obs_gt(habitat_env.get_agent_state(), t)
 
     # # detic_config = OmegaConf.load("config/detic_config.yaml")
     # # detic_predictor = build_detic_predictor(detic_config, habitat_env.get_classes()) # type: ignore
@@ -47,28 +61,32 @@ if __name__ == "__main__":
 
     # scene_id = None
 
-    # for episode in tqdm(viewpoint_dataset.episodes):
-    #     ep_scene_id = episode.scene_id.split('/')[-1]
+    # viewpoints = habitat_env._current_episode.info["viewpoints"]
 
-    #     if len(episode.info["viewpoints"])<8:
-    #         continue
-    
-    #     if ep_scene_id != scene_id:
-    #         scene_id = ep_scene_id
-    #         habitat_env.change_scene(scene_id)
-    #         object2class = habitat_env.get_scene_annotations()
-        
-    #     agent.reset()
+    # habitat_obj_occupancy_grid = habitat_env.get_oracle_object_occupancy_grid(0.25)
+    # object_annotations = habitat_env.get_object_annotations()
 
-    #     object_id = int(episode.episode_id.split("_obj_id_")[-1])
-    #     class_name = object2class[object_id]
-        
+    # object_id = int(habitat_env._current_episode.episode_id.split("_obj_id_")[-1])
+    # class_name = object_annotations[object_id]
+
+    # for i, vp in enumerate(viewpoints):
     #     agent_state = AgentState(
-    #         position=episode.start_position,
-    #         rotation=episode.start_rotation
+    #         position=vp["position"],
+    #         rotation=vp["rotation"]
     #     )
 
     #     obs, labels = habitat_env.get_obs_gt(agent_state)
-    #     habitat_env.set_goal_image(obs_rgb=obs.rgb)
 
-    #     agent.act(obs)
+    #     target_masks = [inst["mask"] for inst in labels.instances if inst["object_id"] == object_id]
+    #     det_visualizer = DetVisualizer(
+    #         obs.rgb,
+    #         metadata=metadata,
+    #         scale=0.5,
+    #         instance_mode=ColorMode.SEGMENTATION
+    #     )
+
+    #     for target_mask in target_masks:
+    #         det_visualizer.draw_binary_mask(target_mask)
+
+    #     o = det_visualizer.get_output().get_image()
+    #     Image.fromarray(o).save(f"vp/vp{i}.png")

@@ -405,11 +405,11 @@ class Visualizer:
         depth_img = (depth_img* 255).astype(np.uint8)
         depth_img = cv2.cvtColor(depth_img, cv2.COLOR_RGB2BGR)
 
-        for x in np.linspace(0,w,8)[1:-1]:
-            for y in np.linspace(0,h,8)[1:-1]:
-                value = min_depth_user + (1 - depth_img[round(x), round(y)][0] / 255) * (max_depth_user - min_depth_user)
-                cv2.putText(depth_img, f"{value:.2f}m", (round(y) - 8, round(x)),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
+        # for x in np.linspace(0,w,8)[1:-1]:
+        #     for y in np.linspace(0,h,8)[1:-1]:
+        #         value = min_depth_user + (1 - depth_img[round(x), round(y)][0] / 255) * (max_depth_user - min_depth_user)
+        #         cv2.putText(depth_img, f"{value:.2f}m", (round(y) - 8, round(x)),
+        #                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
     
         border_size = 10
         text_bar_height = 50 - border_size
@@ -452,7 +452,7 @@ class Visualizer:
         semantic_map: np.ndarray,
         closest_goal_map: np.ndarray,
         goal_map: np.ndarray,
-        visualize_goal: bool,
+        visualize_goal: bool = True,
     ) -> np.ndarray:
         """make the predicted map sub-frame."""
         if semantic_map is None:

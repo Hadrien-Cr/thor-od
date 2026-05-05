@@ -41,7 +41,7 @@ def plot_semantic_2d_map(
             region = labeled_mask == i
             coords = np.column_stack(np.where(region))
 
-            if len(coords) < 30:
+            if len(coords) < 10:
                 continue
 
             y, x = coords.mean(axis=0)
@@ -93,7 +93,7 @@ def get_contour_points(
 
 def plot_mask(mask) -> Image.Image:
     colored = np.zeros((*mask.shape[:2], 3), dtype=np.uint8)
-    colored[mask] = [255, 255, 255]
+    colored[mask == 1] = [255, 255, 255]
     return Image.fromarray(colored)
 
 def make_mosaic(

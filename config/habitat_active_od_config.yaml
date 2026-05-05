@@ -2,6 +2,8 @@
 defaults:
   - /habitat: habitat_config_base
   - /habitat/task: pointnav
+  - /habitat/task/measurements: 
+    - top_down_map
   - /habitat/simulator/agents@habitat.simulator.agents.main_agent: rgbd_agent
   - _self_
 
@@ -38,7 +40,6 @@ habitat:
     data_path: data/datasets/habitat_active_od/{split}/{split}.json.gz
     scenes_dir: data/scene_datasets/hssd-hab/scenes
     content_scenes: ["*"]
-
 
 HABITAT_ACTIVE_OD:
   data_root: data_od/
@@ -77,7 +78,18 @@ AGENT:
     dilate_obstacles: False
     dilate_size: 3
     dilate_iter: 1
-
+  PLANNER:
+    collision_threshold: 0.20         # forward move distance under which we consider there's a collision (in meters)
+    step_size: 5                      # maximum distance of the short-term goal selected by the planner
+    obs_dilation_selem_radius: 3      # radius (in cells) of obstacle dilation structuring element
+    goal_dilation_selem_radius: 11    # radius (in cells) of goal dilation structuring element
+    min_obs_dilation_selem_radius: 3  # min radius (in cells) of obstacle dilation structuring element
+    map_downsample_factor: 1          # optional downsampling of traversible and goal map before fmm distance call (1 for no downsampling, 2 for halving resolution)
+    map_update_frequency: 1           # compute fmm distance map every n steps 
+    discrete_actions: True            # discrete motion planner output space or not
+    use_dilation_for_stg: True        # use dilated goals for estimating short-term goals - or just reaching
+    visualize: False
+    min_goal_distance_cm: 100
   SEMANTIC_PREDICTION:
     depth_filtering: True
     depth_filter_range_cm: 0        # 1m about the depth median (+/- 50cm)

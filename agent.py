@@ -9,7 +9,8 @@ from omegaconf import DictConfig
 from sklearn.cluster import DBSCAN
 
 from common.exploration.frontier_exploration import FrontierExplorationPolicy
-from habitat_active_od.visualizer import Visualizer
+from common.planning.discrete_planner import DiscretePlanner
+from visualizer import Visualizer
 from common.mapping.categorical_2d_semantic_map_module import Categorical2DSemanticMapModule
 from common.mapping.categorical_2d_semantic_map_state import Categorical2DSemanticMapState
 from common.interfaces import DiscreteNavigationAction, Observations
@@ -41,6 +42,7 @@ class ObsPreprocessor:
         self.goal_mask = None
         self.last_pose = np.zeros(3)
         self.step = 0
+        
 
     def preprocess(
         self, obs: Observations
@@ -57,7 +59,7 @@ class ObsPreprocessor:
             camera_pose: camera extrinsic pose of shape (num_environments, 4, 4)
         """
 
-        pose_delta, self.last_pose = self._preprocess_pose_delta(obs)
+        pose_delta, self.last_pose = self._preprocess_pose_and_delta(obs)
         pose_delta = (
             torch.tensor(pose_delta)
             .unsqueeze(0)
@@ -91,12 +93,11 @@ class ObsPreprocessor:
         assert obs_preprocessed.shape == (5, self.frame_height, self.frame_width)
         return obs_preprocessed
 
-    def _preprocess_pose_delta(self, obs: Observations) -> tuple[np.ndarray, np.ndarray]:
+    def _preprocess_pose_and_delta(self, obs: Observations) -> tuple[np.ndarray, np.ndarray]:
         """merge GPS+compass. Compute the delta from the previous timestep."""
-        curr_pose = obs.agent_state.position
+        curr_pose = np.array([obs.gps[0], obs.gps[1], obs.compass[0]])
         pose_delta = np.array(pu.get_rel_pose_change(curr_pose, self.last_pose))
         return pose_delta, curr_pose
-
 
 class ActiveODModule(nn.Module):
     """
@@ -135,6 +136,10 @@ class ActiveODModule(nn.Module):
         )
         self.exploration_policy = FrontierExplorationPolicy()
 
+    @property
+    def goal_update_steps(self) -> int:
+        return self.exploration_policy.goal_update_steps
+         
     def forward(
         self,
         seq_obs: torch.Tensor,
@@ -240,7 +245,6 @@ class ActiveODModule(nn.Module):
             seq_found_goal[:, 0] == 0
         ]
 
-
         seq_goal_map = seq_goal_map.view(
             batch_size, sequence_length, *seq_goal_map.shape[-2:]
         )
@@ -271,7 +275,7 @@ class ActiveODAgent:
         self.num_environments = 1
 
         self._module = ActiveODModule(config).to(self.device)
-
+        self.goal_update_steps = self._module.goal_update_steps
         self.verbose = config.AGENT.VERBOSE
 
         self.semantic_map = Categorical2DSemanticMapState(
@@ -285,6 +289,26 @@ class ActiveODAgent:
         agent_radius_cm = config.habitat.simulator.agents.main_agent.radius * 100.0
         agent_cell_radius = int(
             np.ceil(agent_radius_cm / config.AGENT.SEMANTIC_MAP.map_resolution)
+        )
+        self.use_dilation_for_stg = config.AGENT.PLANNER.use_dilation_for_stg
+        self.planner = DiscretePlanner(
+            turn_angle=config.habitat.simulator.turn_angle,
+            collision_threshold=config.AGENT.PLANNER.collision_threshold,
+            step_size=config.AGENT.PLANNER.step_size,
+            obs_dilation_selem_radius=config.AGENT.PLANNER.obs_dilation_selem_radius,
+            goal_dilation_selem_radius=config.AGENT.PLANNER.goal_dilation_selem_radius,
+            map_size_cm=config.AGENT.SEMANTIC_MAP.map_size_cm,
+            map_resolution=config.AGENT.SEMANTIC_MAP.map_resolution,
+            visualize=config.AGENT.PLANNER.visualize,
+            print_images=False,
+            dump_location=config.AGENT.DUMP_LOCATION,
+            exp_name=config.AGENT.EXP_NAME,
+            agent_cell_radius=agent_cell_radius,
+            min_obs_dilation_selem_radius=config.AGENT.PLANNER.min_obs_dilation_selem_radius,
+            map_downsample_factor=config.AGENT.PLANNER.map_downsample_factor,
+            map_update_frequency=config.AGENT.PLANNER.map_update_frequency,
+            discrete_actions=config.AGENT.PLANNER.discrete_actions,
+            min_goal_distance_cm=config.AGENT.PLANNER.min_goal_distance_cm,
         )
 
         self.goal_filtering = config.AGENT.SEMANTIC_PREDICTION.goal_filtering
@@ -317,6 +341,8 @@ class ActiveODAgent:
         self.semantic_map.init_map_and_pose()
         self.found_goal[:] = False
         self.goal_map[:] *= 0
+        self.planner.reset()
+
 
     def act(self, obs: Observations) -> DiscreteNavigationAction:
         """Act end-to-end."""
@@ -332,18 +358,17 @@ class ActiveODAgent:
 
         closest_goal_map = None
 
-        # if self.timesteps[0] < int(360 / self.planner.turn_angle):
-        #     action = DiscreteNavigationAction.TURN_LEFT
-        # elif self.timesteps[0] >= (self.max_steps - 1):
-        #     action = DiscreteNavigationAction.STOP
-        # else:
-        #     action,closest_goal_map,short_term_goal,dilated_obstacle_map,could_not_find_path,planner_stop = self.planner.plan(
-        #         **planner_inputs[0],
-        #         use_dilation_for_stg=self.use_dilation_for_stg,
-        #         debug=self.verbose,
-        #     )
-
-        action = DiscreteNavigationAction.MOVE_FORWARD
+        if self.timesteps[0] < int(360 / self.planner.turn_angle):
+            action = DiscreteNavigationAction.TURN_LEFT
+        elif self.timesteps[0] >= (self.max_steps - 1):
+            action = DiscreteNavigationAction.STOP
+        else:
+            action,closest_goal_map,short_term_goal,dilated_obstacle_map,could_not_find_path,planner_stop = self.planner.plan(
+                **planner_inputs[0],
+                use_dilation_for_stg=self.use_dilation_for_stg,
+                debug=True,
+            )
+            print(f"Action: {action}, Short-term goal: {short_term_goal}, Could not find path: {could_not_find_path}, Planner stop: {planner_stop}")
 
         if self.visualizer is not None:
             collision = obs.task_observations.get("collisions")
@@ -362,7 +387,7 @@ class ActiveODAgent:
             }
             self.visualizer.visualize(**info)
 
-        return action
+        return action # type: ignore
 
     @torch.no_grad()
     def _prepare_planner_inputs(
@@ -375,10 +400,11 @@ class ActiveODAgent:
         Determine a long-term navigation goal in 2D map space for a local policy to
         execute.
         """
+
         dones = torch.zeros(self.num_environments, dtype=torch.bool)
         update_global = torch.tensor(
             [
-                self.timesteps_before_goal_update[e] == 0
+                self.timesteps_before_goal_update[e] == 0 # type: ignore
                 for e in range(self.num_environments)
             ]
         )
@@ -397,7 +423,7 @@ class ActiveODAgent:
             pose_delta.unsqueeze(1),
             dones.unsqueeze(1),
             update_global.unsqueeze(1),
-            camera_pose.unsqueeze(1),
+            camera_pose.unsqueeze(1), # type: ignore
             self.found_goal,
             self.goal_map,
             self.semantic_map.local_map,
@@ -412,16 +438,18 @@ class ActiveODAgent:
         self.semantic_map.global_pose = seq_global_pose[:, -1]
         self.semantic_map.lmb = seq_lmb[:, -1]
         self.semantic_map.origins = seq_origins[:, -1]
-
         goal_map = self._prep_goal_map_input()
         for e in range(self.num_environments):
             self.semantic_map.update_frontier_map(e, frontier_map[e][0].cpu().numpy())
             if self.found_goal[e].item():
-                self.semantic_map.update_global_goal_for_env(e, goal_map[e])
+                self.semantic_map.update_global_goal_for_env(e, goal_map[e]) # type: ignore
+            elif self.timesteps_before_goal_update[e] == 0: # type: ignore
+                self.semantic_map.update_global_goal_for_env(e, goal_map[e]) # type: ignore
+                self.timesteps_before_goal_update[e] = self.goal_update_steps # type: ignore
 
         self.timesteps = [self.timesteps[e] + 1 for e in range(self.num_environments)]
         self.timesteps_before_goal_update = [
-            self.timesteps_before_goal_update[e] - 1
+            self.timesteps_before_goal_update[e] - 1 # type: ignore
             for e in range(self.num_environments)
         ]
 

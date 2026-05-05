@@ -19,7 +19,7 @@ from common.utils.data_utils import save_img
 from common.vision.detic import build_detic_predictor
 
 import habitat_od.od_dataset_registry
-from habitat_active_od.agent import ActiveODAgent
+from agent import ActiveODAgent
 
 
 def overlap(mask1: np.ndarray,mask2:np.ndarray):
@@ -54,7 +54,7 @@ if __name__ == "__main__":
         if ep_scene_id != scene_id:
             scene_id = ep_scene_id
             habitat_env.change_scene(scene_id)
-            object2class = habitat_env.get_scene_annotations()
+            object2class = habitat_env.get_object_annotations()
 
         object_id = int(episode.episode_id.split("_obj_id_")[-1])
         class_name = object2class[object_id]

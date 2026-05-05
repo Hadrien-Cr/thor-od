@@ -18,6 +18,7 @@ from habitat_sim.agent.agent import AgentState
 from common.hssd_od_open_voc.hssd_object_annotations import ObjectSemanticsHSSD, ColorPaletteHSSD
 from common.utils.grid_utils import HabitatObjOccupancyGrid
 from common.interfaces import DiscreteNavigationAction, Observations, Labels
+from common.utils.pose_utils import get_yaw
 
 def get_obj_from_id(
     sim: habitat_sim.Simulator,
@@ -56,6 +57,7 @@ class HSSD_OpenVoc_Env(Env):
         self.object_annotations = ObjectSemanticsHSSD()
         self.color_palette = ColorPaletteHSSD()
         self.goal_image = None
+        self.update_scene()
 
     def get_scene_name(self,) -> str:
         return self.current_episode.scene_id.split("/")[-1]
@@ -82,10 +84,50 @@ class HSSD_OpenVoc_Env(Env):
     def set_goal_image(self, obs_rgb: np.ndarray):
         self.goal_image = obs_rgb
 
-    def get_obs_gt(self, agent_state: AgentState)-> tuple[Observations, Labels]:
+    def get_agent_state(self, ) -> AgentState:
+        return self.sim.agents[0].state
+
+
+    def reset(self) -> Observations:
+        self._reset_stats()
+
+        if self._current_episode is not None:
+            self._current_episode._shortest_path_cache = None
+
+        if (
+            self._episode_iterator is not None
+            and self._episode_from_iter_on_reset
+        ):
+            self._current_episode = next(self._episode_iterator)
+
+        self._episode_from_iter_on_reset = True
+        self._episode_force_changed = False
+
+        assert self._current_episode is not None, "Reset requires an episode"
+
+        old_scene_id = self.sim.config.sim_cfg.scene_id
+
+        self._config = self._task.overwrite_sim_config(
+            self._config, self.current_episode
+        )
+        self._sim.reconfigure(self._config.simulator, self.current_episode)
+
+        if self._current_episode.scene_id != old_scene_id:
+            self.update_scene()
+
+        observations = self.task.reset(episode=self.current_episode)
+
+        self._task.measurements.reset_measures(
+            episode=self.current_episode,
+            task=self.task,
+            observations=observations,
+        )
+
+        return observations
+
+    def get_obs_gt(self, agent_state: AgentState, t)-> tuple[Observations, Labels]:
         self.sim.agents[0].set_state(agent_state)
         sensor_obs = self.sim.get_sensor_observations()
-
         labels = self.decompose_frame(sensor_obs["semantic"])
         semantic_frame = self.colorize(sensor_obs["semantic"])
 
@@ -95,13 +137,19 @@ class HSSD_OpenVoc_Env(Env):
             float(agent_state.rotation.z),  #type: ignore
             float(agent_state.rotation.w), #type: ignore
         )
+
         quat = np.array([rot_w, rot_x, rot_y, rot_z], dtype=np.float32)
-        
+
         rotation_matrix = R.from_quat(quat).as_matrix()
         camera_pose = np.eye(4)
         camera_pose[:3, :3] = rotation_matrix
-        camera_pose[:3, 3] = agent_state.position
+        camera_pose[:3, 3] = agent_state.position.copy()
+        
 
+        yaw = get_yaw(rot_w, rot_x, rot_y, rot_z)
+
+        undefined_depth = (sensor_obs["depth"] == 0)
+        sensor_obs["depth"][undefined_depth] = self._config.simulator.agents.main_agent.sim_sensors.depth_sensor.max_depth
         depth = np.clip(
             sensor_obs["depth"], 
             self._config.simulator.agents.main_agent.sim_sensors.depth_sensor.min_depth, 
@@ -109,9 +157,12 @@ class HSSD_OpenVoc_Env(Env):
         )
 
         metrics = self.get_metrics()
+        x, y, z = agent_state.position
+        gps = np.array([-z, -x])
 
         observation = Observations(
-            agent_state = agent_state,
+            gps = gps,
+            compass = np.array([yaw]),
             rgb = sensor_obs["rgb"][:,:,:3],
             depth = depth,
             semantic = semantic_frame,
@@ -205,7 +256,7 @@ class HSSD_OpenVoc_Env(Env):
         self.setup_semantic_labels()
 
 
-    def get_scene_annotations(self) -> dict[int, str]:
+    def get_object_annotations(self) -> dict[int, str]:
         vocab = self.get_vocab()
         return {obj_id: vocab[obj_name] for obj_id, obj_name in self.obj_id_to_obj_shortname.items()} 
 
@@ -231,7 +282,7 @@ class HSSD_OpenVoc_Env(Env):
         return sorted(set(self.get_vocab().values()))
     
     def colorize(self, semantic_obs) -> np.ndarray:
-        object2class = self.get_scene_annotations()
+        object2class = self.get_object_annotations()
         class2color = self.color_palette.class2color
 
         color_map = np.array(
@@ -246,7 +297,7 @@ class HSSD_OpenVoc_Env(Env):
         
         values = np.unique(semantic_obs)
 
-        annotations = self.get_scene_annotations()
+        annotations = self.get_object_annotations()
 
         def flatten_contour(countour_of_pairs):
             out = []

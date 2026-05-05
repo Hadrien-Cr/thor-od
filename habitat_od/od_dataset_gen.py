@@ -18,9 +18,9 @@ from common.utils.sampling_utils import area_bin_sampling
 
 
 if __name__ == "__main__": 
-    config = habitat.get_config(config_path="config/habitat_od_config.yaml")
+    config = habitat.get_config(config_path="habitat_od/config/data_gen_config.yaml")
 
-    if os.path.exists(Path(config.HABITAT_OD.data_root) / config.HABITAT_OD.dataset_name):
+    if os.path.exists(Path(config.DATA_GEN.dataset.data_root) / config.DATA_GEN.dataset.dataset_name):
         raise ValueError("Change dataset_name so you dont overwrite previous")
     
     rng_gen = np.random.default_rng(0)
@@ -32,14 +32,14 @@ if __name__ == "__main__":
     per_class_object_occurences = defaultdict(int)
     class_mapping = habitat_env.get_class_mapping()
 
-    for i, scene in enumerate(scene_names[0:config.HABITAT_OD.num_scenes]):
+    for i, scene in enumerate(scene_names[0:config.DATA_GEN.num_scenes]):
         habitat_env.change_scene(scene)
 
         print("-----------------")
         print("Collection in Scene = ", scene, f"({i}/{len(scene_names)})")
 
-        habitat_obj_occupancy_grid = habitat_env.get_oracle_object_occupancy_grid(config.HABITAT_OD.meters_per_grid_pixel)
-        object2class = habitat_env.get_scene_annotations()
+        habitat_obj_occupancy_grid = habitat_env.get_oracle_object_occupancy_grid(config.DATA_GEN.meters_per_grid_pixel)
+        object2class = habitat_env.get_object_annotations()
 
         for object_id, class_name in object2class.items():
             if class_name == "unknown":
@@ -47,9 +47,9 @@ if __name__ == "__main__":
         
             per_class_object_occurences[class_name] += 1
             
-            candidate_agent_states = habitat_obj_occupancy_grid.get_all_viewpoints(object_id)
+            candidate_agent_states = habitat_obj_occupancy_grid.get_all_viewpoints(object_id, viewpoint_spacing=config.DATA_GEN.viewpoint_spacing)
             rng_gen.shuffle(candidate_agent_states) # type: ignore
-            candidate_agent_states = candidate_agent_states[0:config.HABITAT_OD.num_samples // 4]
+            candidate_agent_states = candidate_agent_states[0:config.DATA_GEN.num_samples // 4]
 
             if not candidate_agent_states:
                 continue
@@ -57,8 +57,7 @@ if __name__ == "__main__":
             for agent_state in tqdm(candidate_agent_states, desc=class_name):
                 obs, labels = habitat_env.get_obs_gt(agent_state)
 
-                if not [inst for inst in labels.instances 
-                    if inst["class_name"] == class_name and inst["mask_area"] >= config.HABITAT_OD.min_pixel_area]:
+                if not sum(inst["class_name"] == class_name and inst["mask_area"] >= config.DATA_GEN.min_pixel_area for inst in labels.instances):
                     continue
                 
                 fname = agent_state2fname(
@@ -70,7 +69,7 @@ if __name__ == "__main__":
 
                 save_img(
                     obs.rgb, 
-                    Path(config.HABITAT_OD.data_root) / config.HABITAT_OD.dataset_name /"test", 
+                    Path(config.DATA_GEN.dataset.data_root) / config.DATA_GEN.dataset.dataset_name /"test", 
                     fname=fname
                 )
                 candidates_samples.append((fname, labels.instances))
@@ -92,15 +91,15 @@ if __name__ == "__main__":
             per_class_candidate_samples,
             rng_gen,
             mask_filtering_fn=lambda m: (m["class_name"] == class_name),
-            num_samples=config.HABITAT_OD.num_samples,
+            num_samples=config.DATA_GEN.num_samples,
         ) 
-        assert len(selected_indices) <= config.HABITAT_OD.num_samples
+        assert len(selected_indices) <= config.DATA_GEN.num_samples
 
         selected_samples = [per_class_candidate_samples[i] for i in selected_indices]
         rejected_samples = [per_class_candidate_samples[i] for i in range(len(per_class_candidate_samples)) if i not in selected_indices]
         
         for (fname, instances) in rejected_samples:
-            delete_image(data_dir=Path(config.HABITAT_OD.data_root) / config.HABITAT_OD.dataset_name /"test", fname = fname)
+            delete_image(data_dir=Path(config.DATA_GEN.dataset.data_root) / config.DATA_GEN.dataset.dataset_name /"test", fname = fname)
 
         if selected_samples:
             splits["test"].extend(selected_samples)
@@ -119,7 +118,7 @@ if __name__ == "__main__":
             class_frequency_mapping[class_name] = "rare"
 
     save_dataset(
-        config.HABITAT_OD, 
+        config.DATA_GEN, 
         splits, 
         habitat_env.get_class_mapping(),
         class_frequency_mapping
